@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>繪圖委託｜五非五 MayNot5</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Varela+Round&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome (Icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom Config for Colors and Fonts -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'cream': '#FFF8E7', // 奶油白
+                        'coral': '#FF7F50', // 珊瑚橙
+                        'yolk': '#FFC300',  // 蛋黃金
+                    },
+                    fontFamily: {
+                        'sans': ['"Noto Sans TC"', 'sans-serif'],
+                        'english': ['"Varela Round"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* 基礎設置與游標隱藏 */
+        body {
+            background-color: #FFF8E7;
+            cursor: none; /* 隱藏預設游標 */
+        }
+         a, button, .cursor-pointer, [onclick] { 
+            cursor: none !important; /* 強制所有可點擊元素不顯示瀏覽器預設游標 */
+        }
+
+        /* 花瓣游標樣式 */
+        #cursor {
+            pointer-events: none;
+            position: fixed;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease;
+            mix-blend-mode: multiply;
+            width: 50px;
+            height: 50px;
+        }
+
+        /* 游標粒子效果樣式 */
+        .particle-petal {
+            pointer-events: none; /* 讓粒子不阻擋點擊 */
+            position: fixed;
+            z-index: 9998; /* 略低於游標，確保游標本體在最上層 */
+            width: 20px; /* 粒子大小，略小於游標本體 */
+            height: 20px;
+            transform: translate(-50%, -50%); /* 確保中心對齊點擊座標 */
+        }
+
+        /* 粒子擴散動畫 */
+        @keyframes petal-burst {
+            0% {
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                /* 利用 CSS 變數 (--end-x, --end-y) 將粒子推開，同時縮小和旋轉 */
+                transform: translate(calc(-50% + var(--end-x)), calc(-50% + var(--end-y))) scale(0.1) rotate(360deg);
+                opacity: 0;
+            }
+        }
+        
+        /* Loading 動畫 */
+        @keyframes petal-glow {
+            0%, 100% { opacity: 0.2; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+        .petal-loading {
+            opacity: 0;
+            animation: petal-glow 1.5s infinite;
+        }
+        
+        /* 圖片輪播淡入淡出 */
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+            background-size: cover;
+            background-position: center;
+        }
+        .slide.active {
+            opacity: 1;
+        }
+
+        /* 隱藏滾動條但保留功能 (優化視覺) */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #FFF8E7;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #FF7F50;
+            border-radius: 4px;
+        }
+
+        /* 錨點滾動調整，確保粘性導航欄不遮擋內容 */
+        html:target {
+            scroll-margin-top: 6rem;
+        }
+        .loading-img {
+            width: 40px;   
+            height: 40px;
+            display: block;
+        }
+    </style>
+</head>
+<body class="text-gray-700 antialiased selection:bg-yolk selection:text-white">
+
+    <!-- 1. Loading Screen (載入畫面) -->
+    <div id="loading-screen" class="fixed inset-0 z-[100] bg-cream flex items-center justify-center transition-opacity duration-500">
+        <div class="flex space-x-2">
+            <img src="圖片/花朵圖標.png" alt="載入中" class="petal-loading loading-img" style="animation-delay: 0s;">
+            <img src="圖片/花朵圖標.png" alt="載入中" class="petal-loading loading-img" style="animation-delay: 0.2s;">
+            <img src="圖片/花朵圖標.png" alt="載入中" class="petal-loading loading-img" style="animation-delay: 0.4s;">
+            <img src="圖片/花朵圖標.png" alt="載入中" class="petal-loading loading-img" style="animation-delay: 0.6s;">
+            <img src="圖片/花朵圖標.png" alt="載入中" class="petal-loading loading-img" style="animation-delay: 0.8s;">
+        </div>
+    </div>
+
+    <!-- 自定義游標 - 僅在非移動設備上顯示 -->
+    <div id="cursor" class="hidden md:block text-coral">
+        <img src="圖片/花朵圖標.png">
+    </div>
+
+    <!-- 懸浮按鈕 (Floating Action Button) -->
+    <a id="floating-cta" href="#commission" class="fixed bottom-6 right-6 z-40 bg-yolk text-white font-bold text-lg py-3 px-6 rounded-full shadow-2xl hover:bg-orange-400 active:scale-95 transition-all duration-500 flex items-center transform translate-y-0 border-2 border-white">
+        <i class="fa-solid fa-cart-shopping mr-2"></i> 查看委託項目
+    </a>
+
+    <!-- 2. 導覽列 (Sticky Navbar) -->
+    <nav class="sticky top-0 z-50 bg-cream/90 backdrop-blur-md shadow-lg">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <!-- Logo -->
+            <a href="#home" class="text-2xl font-bold font-english text-coral hover:text-yolk transition-colors">
+                 五非五 MayNot5
+            </a>
+
+            <!-- Mobile Menu Button -->
+            <button id="menu-btn" class="md:hidden text-coral text-2xl p-2 rounded-full hover:bg-coral/10 focus:outline-none transition">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+
+            <!-- Desktop Links -->
+            <div class="hidden md:flex space-x-8 font-bold text-lg text-coral">
+                <a href="#home" class="hover:text-yolk active:scale-95 transition transform">首頁</a>
+                <a href="#about" class="hover:text-yolk active:scale-95 transition transform">關於我</a>
+                <a href="#gallery" class="hover:text-yolk active:scale-95 transition transform">作品展示</a>
+                <a href="#commission" class="hover:text-yolk active:scale-95 transition transform">委託項目</a>
+                <a href="#contact" class="hover:text-yolk active:scale-95 transition transform">聯絡我</a>
+            </div>
+        </div>
+        
+        <!-- Mobile Menu (Hidden by default) -->
+        <div id="mobile-menu" class="hidden md:hidden bg-cream border-t border-coral/30 flex flex-col space-y-2 font-bold text-coral shadow-inner">
+            <a href="#home" class="block py-2 px-4 hover:bg-coral/10 hover:text-yolk transition" onclick="closeMobileMenu()">首頁</a>
+            <a href="#about" class="block py-2 px-4 hover:bg-coral/10 hover:text-yolk transition" onclick="closeMobileMenu()">關於我</a>
+            <a href="#gallery" class="block py-2 px-4 hover:bg-coral/10 hover:text-yolk transition" onclick="closeMobileMenu()">作品展示</a>
+            <a href="#commission" class="block py-2 px-4 hover:bg-coral/10 hover:text-yolk transition" onclick="closeMobileMenu()">委託項目</a>
+            <a href="#contact" class="block py-2 px-4 hover:bg-coral/10 hover:text-yolk transition" onclick="closeMobileMenu()">聯絡我</a>
+        </div>
+    </nav>
+
+    <!-- 3. 首頁 (Hero Section)-->
+    <header id="home" class="relative w-full h-screen overflow-hidden flex items-center">
+        <div class="absolute inset-0 z-0">
+            <div class="slide active" style="background-image: url('圖片/01.png');"></div>
+            <div class="slide" style="background-image: url('圖片/02.png');"></div>
+            <div class="slide" style="background-image: url('圖片/學生美展-台灣風華拷貝.png');"></div>
+        </div>
+    </header>
+
+    <!-- 4. 關於我 (About Me) -->
+    <section id="about" class="relative py-20 px-4 min-h-screen flex items-center justify-center">
+            
+        <!-- 整合後的橫式卡片 -->
+        <div class="flex flex-col lg:flex-row rounded-3xl shadow-2xl overflow-hidden p-0 w-full max-w-4xl bg-white/95 z-20">
+            
+            <!-- 左側: 頭像區 -->
+            <div class="lg:w-1/3 w-full bg-coral/70 p-8 flex flex-col items-center justify-center">
+                <div class="w-40 h-40 bg-gray-800 rounded-full shadow-xl flex items-center justify-center">
+                    <img src="圖片/五月花頭像.jpg" 
+                        alt="五非五頭像" 
+                        class="w-full h-full object-cover rounded-full"
+                    />
+                </div>
+                <h3 class="text-3xl font-sans text-white font-extrabold mt-4">五非五</h3>
+                <p class="text-white/80 mt-1">＠5maynot5</p>
+            </div>
+            
+            <!-- 右側: 簡介與委託範圍 -->
+            <div class="lg:w-2/3 w-full p-8 text-left space-y-8">
+                
+                <!-- 繪師簡介 -->
+                <div>
+                    <h4 class="text-3xl font-sans text-coral font-bold mb-3 flex items-center">
+                        關於我
+                    </h4>
+                    <p class="text-lg leading-relaxed mb-4">
+                        歡迎光臨，我是五非五（MayNot5），怎麼稱呼都可以，擅長繪製Q版人物與Q版動物，目前只承接非商用委託，歡迎訂購。
+                    </p>
+                </div>
+
+                <!-- 委託範圍 -->
+                    <h4 class="text-3xl font-sans text-coral font-bold mb-5 flex items-center">
+                        委託範圍
+                    </h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <!-- 接受項目 --->
+                        <div>
+                            <p class="text-xl font-bold text-coral mb-3 flex items-center"><i class="fa-solid fa-circle-check w-5 h-5 text-coral mr-2 mt-1 flex-shrink-0"></i> 接受項目</p>
+                            <ul class="space-y-2 text-base">
+                                <li class="flex items-start">原創角色、二創</li>
+                                <li class="flex items-start">夢向 、CP向</li>
+                                <li class="flex items-start">成男成女、少年少女</li>
+                                <li class="flex items-start">獸人、純動物</li>
+                                <li class="flex items-start">輕微血腥</li>
+                            </ul>
+                        </div>
+                        <!-- 不接受項目 --->
+                        <div>
+                            <p class="text-xl font-bold text-coral mb-3 flex items-center"><i class="fa-solid fa-circle-xmark w-5 h-5 text-coral mr-2 mt-1 flex-shrink-0"></i> 不接受項目</p>
+                            <ul class="space-y-2 text-base">
+                                <li class="flex items-start">R18</li>
+                                <li class="flex items-start">複雜機甲、鎧甲</li>
+                                <li class="flex items-start">政治、宗教及其他爭議性題材</li>
+                            </ul>
+                        </div>
+                    </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- 5. 作品展示 -->
+    <section id="gallery" class="py-20 bg-cream">
+        <div class="container mx-auto px-4">
+            <div class="text-center mb-12">
+                <h2 class="text-4xl font-bold text-coral inline-block">
+                    <i class="fa-solid fa-images mr-2"></i> 作品展示
+                </h2>
+            </div>
+
+            <!-- Grid Layout -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
+                
+                <!-- Gallery Items-->
+
+                <div class="group relative cursor-pointer overflow-hidden rounded-2xl shadow-xl transition-shadow" onclick="openModal(this)"
+                    data-title="笑看蓮花向青霄"
+                    data-spec="作品規格 | 2160 x 3840 300dpi PNG"
+                    data-software="使用軟體 | Clip Studio Paint Blender">
+                    <img src="圖片/2025 生日.png" alt="正比雙人插畫" class="w-full h-48 md:h-64 object-cover transform transition duration-500 group-hover:scale-110">
+                    <div class="absolute inset-0 bg-coral/80 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col items-center justify-center text-white p-4">
+                        <h3 class="text-xl font-bold">正比雙人插畫</h3>
+                        <p class="text-sm opacity-90">2025 生日賀圖</p>
+                    </div>
+                </div>
+
+                <div class="group relative cursor-pointer overflow-hidden rounded-2xl shadow-xl transition-shadow" onclick="openModal(this)"
+                    data-title="2024萬聖節賀圖"
+                    data-spec="作品規格 | A4 300dpi PNG"
+                    data-software="使用軟體 | Procreate Clip Studio Paint">
+                    <img src="圖片/2024 萬聖節拷貝.png" alt="Q版多人插畫" class="w-full h-48 md:h-64 object-cover transform transition duration-500 group-hover:scale-110">
+                    <div class="absolute inset-0 bg-coral/80 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col items-center justify-center text-white p-4">
+                        <h3 class="text-xl font-bold">Q版多人插畫</h3>
+                        <p class="text-sm opacity-90">2024 萬聖節賀圖</p>
+                    </div>
+                </div>
+
+                <div class="group relative cursor-pointer overflow-hidden rounded-2xl shadow-xl transition-shadow" onclick="openModal(this)"
+                    data-title="標本師 法帝斯"
+                    data-spec="作品規格 | A4 300dpi PNG"
+                    data-software="使用軟體 | Procreate Clip Studio Paint">
+                    <img src="圖片/標本師法帝斯.jpg" alt="正比單人插畫" class="w-full h-48 md:h-64 object-cover transform transition duration-500 group-hover:scale-110">
+                    <div class="absolute inset-0 bg-coral/80 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col items-center justify-center text-white p-4">
+                        <h3 class="text-xl font-bold">正比單人插畫</h3>
+                        <p class="text-sm opacity-90">第五屆 虛擬網紅設計大賽 VTuber Boss 電繪原創設計組 作品</p>
+                    </div>
+                </div>
+
+                <div class="group relative cursor-pointer overflow-hidden rounded-2xl shadow-xl transition-shadow" onclick="openModal(this)"
+                    data-title="研習營海報立繪"
+                    data-spec="作品規格 | A4 300dpi PNG"
+                    data-software="使用軟體 | Procreate Clip Studio Paint">
+                    <img src="圖片/研習營-海報3拷貝.jpg" alt="正比立繪" class="w-full h-48 md:h-64 object-cover transform transition duration-500 group-hover:scale-110">
+                    <div class="absolute inset-0 bg-coral/80 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col items-center justify-center text-white p-4">
+                        <h3 class="text-xl font-bold">正比立繪</h3>
+                        <p class="text-sm opacity-90">財團法人群生文教基金會 113年寒假青少年美術、空間、設計、電繪研習營海報立繪</p>
+                    </div>
+                </div>
+
+                <div class="group relative cursor-pointer overflow-hidden rounded-2xl shadow-xl transition-shadow" onclick="openModal(this)"
+                    data-title="綿綿山河"
+                    data-spec="作品規格 | A3 300dpi PNG"
+                    data-software="使用軟體 | Procreate Clip Studio Paint">
+                    <img src="圖片/作品集封面拷貝.jpg" alt="正比單人插畫" class="w-full h-48 md:h-64 object-cover transform transition duration-500 group-hover:scale-110">
+                    <div class="absolute inset-0 bg-coral/80 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col items-center justify-center text-white p-4">
+                        <h3 class="text-xl font-bold">正比單人插畫</h3>
+                        <p class="text-sm opacity-90">作品集封面</p>
+                    </div>
+                </div>
+
+                 <div class="group relative cursor-pointer overflow-hidden rounded-2xl shadow-xl transition-shadow" onclick="openModal(this)"
+                    data-title="台灣風華"
+                    data-spec="作品規格 | A4 300dpi PNG"
+                    data-software="使用軟體 | Clip Studio Paint">
+                    <img src="圖片/學生美展-台灣風華拷貝.png" alt="Q版單人插畫" class="w-full h-48 md:h-64 object-cover transform transition duration-500 group-hover:scale-110">
+                    <div class="absolute inset-0 bg-coral/80 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col items-center justify-center text-white p-4">
+                        <h3 class="text-xl font-bold">Q版單人插畫</h3>
+                        <p class="text-sm opacity-90">第4屆 台日學生原創插畫漫畫大賽 高中插畫組 作品</p>
+                    </div>
+                </div> 
+
+                 <div class="group relative cursor-pointer overflow-hidden rounded-2xl shadow-xl transition-shadow" onclick="openModal(this)"
+                    data-title="三月兔 尤菈莉亞(星陌的OC)"
+                    data-spec="作品規格 | 1,500 x 1,750 300dpi PNG"
+                    data-software="使用軟體 |Procreate Clip Studio Paint">
+                    <img src="圖片/愛麗絲夢遊仙境pa_兔兔拷貝.png" alt="服裝設計驚喜包" class="w-full h-48 md:h-64 object-cover transform transition duration-500 group-hover:scale-110">
+                    <div class="absolute inset-0 bg-coral/80 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col items-center justify-center text-white p-4">
+                        <h3 class="text-xl font-bold">服裝設計驚喜包</h3>
+                        <p class="text-sm opacity-90">愛麗絲夢遊仙境主題 服裝設計</p>
+                    </div>
+                </div> <!-- 修正：作品 7 的主 div 結束標籤 -->
+
+                <div class="group relative cursor-pointer overflow-hidden rounded-2xl shadow-xl transition-shadow" onclick="openModal(this)"
+                    data-title="武嶽華 萬聖節狼人裝"
+                    data-spec="作品規格 | 2,160 x 1,620 300dpi PNG"
+                    data-software="使用軟體 |Procreate Clip Studio Paint">
+                    <img src="圖片/2025萬聖節服設拷貝.png" alt="服裝設計驚喜包" class="w-full h-48 md:h-64 object-cover transform transition duration-500 group-hover:scale-110">
+                    <div class="absolute inset-0 bg-coral/80 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col items-center justify-center text-white p-4">
+                        <h3 class="text-xl font-bold">服裝設計驚喜包</h3>
+                        <p class="text-sm opacity-90">萬聖節狼人主題 服裝設計</p>
+                    </div>
+                </div> <!-- 修正：作品 8 的主 div 結束標籤 -->
+                
+            </div>
+        </div>
+    </section>
+
+    <!-- 圖片燈箱 Modal (Lightbox) - 已根據要求重構 -->
+    <div id="lightbox" class="fixed inset-0 z-[60] bg-black/90 hidden flex items-center justify-center p-4 transition-opacity duration-300" onclick="closeModal()">
+        <!-- 燈箱內容區塊：圖片和說明文字並排 (md以上) -->
+        <div class="relative max-w-6xl w-full flex flex-col md:flex-row items-start md:space-x-6" onclick="event.stopPropagation()">
+            <!-- 關閉按鈕 - 灰色預設，觸發後蛋黃色，無圖標 -->
+            <button onclick="closeModal()" class="absolute -top-12 right-0 text-gray-500 text-4xl hover:text-yolk transition transform hover:scale-110 active:scale-95 font-sans font-bold">
+                &times; <!-- 使用 HTML 實體 X -->
+            </button>
+
+            <!-- 左側: 圖片區 -->
+            <!-- 移除 bg-gray-900 和圓角/陰影，使圖片區底色透明化 -->
+            <div class="md:w-3/4 w-full flex justify-center items-center overflow-hidden">
+                <img id="lightbox-img" src="" alt="作品放大圖" class="w-full h-auto max-h-[85vh] object-contain">
+            </div>
+            
+            <!-- 右側: 文字說明區 -->
+            <!-- 移除 bg-gray-800, 圓角和陰影，使說明區底色透明化 -->
+            <div class="md:w-1/4 w-full mt-6 md:mt-0 p-6 flex-shrink-0">
+                <!-- 標題 (珊瑚紅) - 移除下划線相關 class (border-b, border-coral/50, pb-2) -->
+                <h3 id="lightbox-title" class="text-coral text-2xl font-bold mb-4">作品標題</h3>
+                
+                <div class="space-y-3">
+                    <!-- 作品規格 (白色內文) -->
+                    <p id="lightbox-spec" class="text-white text-base"></p>
+                    
+                    <!-- 使用軟體 (白色內文) -->
+                    <p id="lightbox-software" class="text-white text-base"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. 委託項目 (Commission) -->
+   <section id="commission" class="py-20 bg-yellow-50 relative">
+    <i class="absolute top-10 left-10 text-7xl text-coral/10 hidden lg:block animate-spin-slow"></i>
+    <i class="absolute bottom-10 right-10 text-7xl text-yolk/10 hidden lg:block"></i>
+
+    <div class="container mx-auto px-4">
+        <div class="text-center mb-16">
+            <h2 class="text-4xl font-bold text-coral inline-block">
+                <i class="fa-solid fa-shop"></i> 委託項目
+            </h2>
+            <br>
+            <div class="mt-6 p-3 inline-block bg-white rounded-full shadow-inner border border-coral/30 text-sm font-medium text-coral">
+                <i class="fa-solid fa-info-circle mr-1"></i> 報價為非商業用途基本價，商業用途請洽談。
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            
+            <div class="bg-white rounded-[2rem] shadow-2xl overflow-hidden hover:scale-[1.03] transition duration-500 border-4 border-white/50 flex flex-col">
+                <div class="h-48 bg-coral flex items-center justify-center overflow-hidden relative">
+                    <img src="圖片/FGO 高揚斯卡雅.jpg" alt="Q版立繪" class="w-full h-full object-cover opacity-90">
+                </div>
+                <div class="p-8 flex-1 flex flex-col">
+                    <h3 class="text-2xl font-bold mb-2">Q版立繪</h3>
+                    <div class="space-y-3 text-gray-600 mb-6 text-sm flex-1 mt-3">
+                        <p><span class="font-bold text-coral flex items-center">交付規格</span> A4, 300dpi, PNG</p>
+                        <p><span class="font-bold text-coral flex items-center">付款方式</span> 銀行轉帳</p>
+                        <p><span class="font-bold text-coral flex items-center">委託流程</span> 付全款 ➤ 草稿確認 ➤ 完稿 ➤ 使用Gmail交付</p>
+                        <p><span class="font-bold text-coral flex items-center">製作工時</span> 一週（不含例假日）</p>
+                    </div>
+                    <div class="text-center mt-auto">
+                        <p class="text-4xl font-english font-bold text-coral mb-4">NT$ 800+</p>
+                        <a href="#contact" class="w-full bg-yolk text-white font-bold text-lg py-3 rounded-full shadow-lg hover:bg-orange-400 active:bg-orange-600 active:scale-95 transition-all inline-flex items-center justify-center">
+                            <i class="fa-solid fa-basket-shopping mr-2"></i> 立即洽詢
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-[2rem] shadow-2xl overflow-hidden hover:scale-[1.03] transition duration-500 border-4 border-white/50 flex flex-col">
+                <div class="h-48 bg-coral flex items-center justify-center overflow-hidden relative">
+                    <img src="圖片/學生美展-台灣風華拷貝.png" alt="Q版插畫" class="w-full h-full object-cover opacity-90">
+                </div>
+                <div class="p-8 flex-1 flex flex-col">
+                    <h3 class="text-2xl font-bold mb-2">Q版插畫</h3>
+                    <div class="space-y-3 text-gray-600 mb-6 text-sm flex-1 mt-3">
+                         <p><span class="font-bold text-coral flex items-center">交付規格</span> A4以上, 300dpi, PNG</p>
+                        <p><span class="font-bold text-coral flex items-center">付款方式</span> 銀行轉帳</p>
+                        <p><span class="font-bold text-coral flex items-center">委託流程</span> 討論構圖 ➤ 付50％訂金 ➤ 兩種草稿二選一確認 ➤ 完稿 ➤ 付尾款 ➤ 使用Gmail交付</p>
+                        <p><span class="font-bold text-coral flex items-center">製作工時</span> 3週（不含例假日）</p>
+                    </div>
+                    <div class="text-center mt-auto">
+                        <p class="text-4xl font-english font-bold text-coral mb-4">NT$ 1500+</p>
+                        <a href="#contact" class="w-full bg-yolk text-white font-bold text-lg py-3 rounded-full shadow-lg hover:bg-orange-400 active:bg-orange-600 active:scale-95 transition-all inline-flex items-center justify-center">
+                            <i class="fa-solid fa-basket-shopping mr-2"></i> 立即洽詢
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-[2rem] shadow-2xl overflow-hidden hover:scale-[1.03] transition duration-500 border-4 border-white/50 flex flex-col">
+                <div class="h-48 bg-coral flex items-center justify-center overflow-hidden relative">
+                    <img src="圖片/2025萬聖節服設拷貝.png" alt="服裝設計驚喜包" class="w-full h-full object-cover opacity-90">
+                </div>
+                <div class="p-8 flex-1 flex flex-col">
+                    <h3 class="text-2xl font-bold mb-2">服裝設計驚喜包</h3>
+                    <div class="space-y-3 text-gray-600 mb-6 text-sm flex-1 mt-3">
+                        <p><span class="font-bold text-coral flex items-center">交付規格</span> A4, 300dpi, PNG</p>
+                        <p><span class="font-bold text-coral flex items-center">付款方式</span> 銀行轉帳</p>
+                        <p><span class="font-bold text-coral flex items-center">委託流程</span> 選擇三個元素 ➤ 付全款 ➤ 完稿 ➤ 使用Gmail交付</p>
+                        <p><span class="font-bold text-coral flex items-center">製作工時</span> 一週（不含例假日）</p>
+                    </div>
+                    <div class="text-center mt-auto">
+                        <p class="text-4xl font-english font-bold text-coral mb-4">NT$ 900+</p>
+                        <a href="#contact" class="w-full bg-yolk text-white font-bold text-lg py-3 rounded-full shadow-lg hover:bg-orange-400 active:bg-orange-600 active:scale-95 transition-all inline-flex items-center justify-center">
+                            <i class="fa-solid fa-basket-shopping mr-2"></i> 立即洽詢
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="text-center mt-12 max-w-3xl mx-auto p-6 bg-cream rounded-3xl border-2 border-coral/50 border-dashed shadow-inner backdrop-blur-sm">
+            <h3 class="text-xl font-bold text-coral mb-3"><i class="fa-solid fa-ruler-combined mr-2"></i> 客製化需求</h3>
+            <p class="text-gray-600">
+                如果您需要 <span class="font-bold">貼圖設計、商業封面、Vtuber 立繪</span> 或其他複雜需求<br>
+                請直接透過下方的聯絡方式提供詳細需求、預算與截稿日期，我將為您提供報價。
+            </p>
+        </div>
+    </div>
+</section>
+
+    <!-- 7. 聯絡我 (Footer) -->
+    <footer id="contact" class="bg-coral text-white py-12">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-3xl font-bold mb-8 font-english"><i class="fa-solid fa-envelope-open-text mr-2"></i> Contact Me</h2>
+            
+            <div class="flex justify-center space-x-8 mb-8">
+                <!-- Facebook (Placeholder Link) -->
+                <a href="https://www.facebook.com/5maynot5/" target="_blank" class="bg-white text-coral w-14 h-14 rounded-full flex items-center justify-center text-3xl hover:bg-yolk hover:text-white transition shadow-lg transform hover:scale-110">
+                    <i class="fa-brands fa-facebook-f"></i>
+                </a>
+                <!-- Instagram (Placeholder Link) -->
+                <a href="https://www.instagram.com/5maynot5/" target="_blank" class="bg-white text-coral w-14 h-14 rounded-full flex items-center justify-center text-3xl hover:bg-yolk hover:text-white transition shadow-lg transform hover:scale-110">
+                    <i class="fa-brands fa-instagram"></i>
+                </a>
+                <!-- Email -->
+                <a href="mailto:mia2005910@gmail.com" class="bg-white text-coral w-14 h-14 rounded-full flex items-center justify-center text-3xl hover:bg-yolk hover:text-white transition shadow-lg transform hover:scale-110">
+                    <i class="fa-solid fa-envelope"></i>
+                </a>
+            </div>
+
+            <p class="mt-10 text-sm opacity-70">© 2025 五非五 MayNot5. All Rights Reserved.</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript 邏輯 -->
+    <script>
+        // 1. Loading 動畫控制
+        window.addEventListener('load', () => {
+            const loadingScreen = document.getElementById('loading-screen');
+            setTimeout(() => {
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                }, 500);
+            }, 1000); // 載入 1 秒後淡出
+        });
+
+        // 2. 自定義游標跟隨與粒子效果
+        const cursor = document.getElementById('cursor');
+        
+        // 新增：產生花瓣粒子效果
+        function createParticles(x, y) {
+            const particleCount = 8; // 粒子數量
+            const radius = 50; // 粒子擴散的半徑距離 (像素)
+
+            for (let i = 0; i < particleCount; i++) {
+                const petal = document.createElement('img');
+                petal.src = '圖片/花朵圖標.png';
+                petal.classList.add('particle-petal');
+
+                // 計算擴散方向 (均勻分佈)
+                const angle = (i / particleCount) * 2 * Math.PI;
+                const endX = Math.cos(angle) * radius;
+                const endY = Math.sin(angle) * radius;
+
+                // 設置初始位置 (游標的座標)
+                petal.style.left = `${x}px`;
+                petal.style.top = `${y}px`;
+
+                // 設置 CSS 變數，用於 @keyframes 中的擴散目標
+                petal.style.setProperty('--end-x', `${endX}px`);
+                petal.style.setProperty('--end-y', `${endY}px`);
+                
+                // 應用動畫，並隨機調整持續時間，增加自然感 (0.4s 到 0.6s)
+                petal.style.animation = `petal-burst ${0.4 + Math.random() * 0.2}s ease-out forwards`;
+                
+                document.body.appendChild(petal);
+
+                // 動畫結束後移除元素 (以防 DOM 堆積)
+                petal.addEventListener('animationend', () => {
+                    petal.remove();
+                });
+            }
+        }
+
+
+        if (cursor) {
+            document.addEventListener('mousemove', (e) => {
+                cursor.style.left = e.clientX + 'px';
+                cursor.style.top = e.clientY + 'px';
+            });
+            
+            // 游標點擊縮小動畫 + 粒子效果 
+            document.addEventListener('mousedown', (e) => { 
+                // 1. 游標本體的縮小動畫
+                cursor.style.transform = "translate(-50%, -50%) scale(0.8) rotate(15deg)";
+
+                // 2. 粒子擴散效果 (傳入點擊座標)
+                createParticles(e.clientX, e.clientY); 
+            });
+            document.addEventListener('mouseup', () => {
+                cursor.style.transform = "translate(-50%, -50%) scale(1) rotate(0deg)";
+            });
+        }
+
+        // 3. 圖片輪播 (Hero Section)
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        
+        function nextSlide() {
+            if (slides.length === 0) return;
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (currentSlide + 1) % slides.length;
+            slides[currentSlide].classList.add('active');
+        }
+        // 確保至少有一張圖片時才啟動輪播
+        if (slides.length > 1) {
+            setInterval(nextSlide, 3500); // 每 3.5 秒切換
+        } else if (slides.length === 1) {
+             slides[0].classList.add('active'); // 如果只有一張圖，直接顯示
+        }
+
+
+        // 4. 手機版選單切換
+        const menuBtn = document.getElementById('menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        
+        menuBtn.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+            // 切換漢堡圖標為 X 圖標
+            const icon = menuBtn.querySelector('i');
+            icon.classList.toggle('fa-bars');
+            icon.classList.toggle('fa-times');
+        });
+
+        // 點擊移動選單後關閉
+        function closeMobileMenu() {
+            mobileMenu.classList.add('hidden');
+            const icon = menuBtn.querySelector('i');
+            icon.classList.remove('fa-times');
+            icon.classList.add('fa-bars');
+        }
+        
+        // 5. 燈箱功能 (Lightbox) - 已修改以顯示文字說明
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightbox-img');
+        // 新增獲取文字元素的變數
+        const lightboxTitle = document.getElementById('lightbox-title');
+        const lightboxSpec = document.getElementById('lightbox-spec');
+        const lightboxSoftware = document.getElementById('lightbox-software');
+
+        function openModal(element) {
+            // 獲取圖片的完整 URL
+            const img = element.querySelector('img');
+            // 獲取 data 屬性中的文字資訊
+            const title = element.dataset.title || '作品標題';
+            const spec = element.dataset.spec || '作品規格 | 無';
+            const software = element.dataset.software || '使用軟體 | 無';
+
+            // 設置圖片來源
+            lightboxImg.src = img.src;
+            
+            // 設置文字內容
+            lightboxTitle.textContent = title;
+            lightboxSpec.textContent = spec;
+            lightboxSoftware.textContent = software;
+            
+            // 顯示燈箱
+            lightbox.classList.remove('hidden');
+            document.body.style.overflow = 'hidden'; // 禁止背景滾動
+        }
+
+        function closeModal() {
+            lightbox.classList.add('hidden');
+            document.body.style.overflow = 'auto'; // 恢復背景滾動
+        }
+
+        // 6. 懸浮按鈕控制 (Floating CTA Control)
+        const floatingBtn = document.getElementById('floating-cta');
+        const commissionSection = document.getElementById('commission');
+        const contactSection = document.getElementById('contact'); 
+
+        // 檢查按鈕和兩個區塊是否存在
+        if (floatingBtn && commissionSection && contactSection) {
+            // 監聽器執行時的動作
+            const observerCallback = (entries) => {
+                // 檢查是否有任何一個目標區塊正在畫面內
+                const isAnySectionIntersecting = entries.some(entry => entry.isIntersecting);
+
+                const hideClasses = ['translate-y-[200%]', 'opacity-0'];
+
+                if (isAnySectionIntersecting) {
+                    // 進入任一區塊：隱藏按鈕
+                    floatingBtn.classList.add(...hideClasses);
+                    floatingBtn.style.pointerEvents = 'none'; // 隱藏時不可點擊
+                } else {
+                    // 離開所有區塊：顯示按鈕
+                    floatingBtn.classList.remove(...hideClasses);
+                    floatingBtn.style.pointerEvents = 'auto'; // 恢復可點擊
+                }
+            };
+            
+            // 使用 Intersection Observer 監聽委託區域和聯絡我區域
+            const observer = new IntersectionObserver(observerCallback, {
+                threshold: 0, 
+                rootMargin: '100px 100px 700px 100px' 
+            });
+
+            // 開始監聽兩個目標
+            observer.observe(commissionSection);
+            observer.observe(contactSection);
+        }
+
+    </script>
+</body>
+</html>
